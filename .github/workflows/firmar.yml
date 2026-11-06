@@ -1,0 +1,27 @@
+name: Firmar atajo iPhone
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Vercel_IA_sin_firmar.shortcut'
+      - '.github/workflows/firmar.yml'
+permissions:
+  contents: read
+jobs:
+  firmar:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Firmar atajo
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s Vercel_IA_sin_firmar.shortcut
+          shortcuts sign --mode anyone --input Vercel_IA_sin_firmar.shortcut --output Vercel_IA_firmado.shortcut
+          test -s Vercel_IA_firmado.shortcut
+      - name: Publicar archivo firmado
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vercel-IA-firmado
+          path: Vercel_IA_firmado.shortcut
+          retention-days: 7
