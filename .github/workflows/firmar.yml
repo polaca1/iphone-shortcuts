@@ -1,32 +1,68 @@
 name: Firmar atajo iPhone
+
 on:
   workflow_dispatch:
   push:
     paths:
       - 'Vercel_IA_sin_firmar.shortcut'
       - '.github/workflows/firmar.yml'
+
 permissions:
   contents: read
+
 jobs:
   firmar:
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Comprobar archivo
-        run: |
-          ls -lah
-          if [ ! -s Vercel_IA_sin_firmar.shortcut ]; then
-            echo "::error::Falta Vercel_IA_sin_firmar.shortcut en la raiz de la rama ejecutada. Sube el archivo y vuelve a ejecutar."
-            exit 1
-          fi
-      - name: Firmar atajo
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Validar atajo sin firmar
+        shell: bash
         run: |
           set -euo pipefail
-          shortcuts sign --mode anyone --input Vercel_IA_sin_firmar.shortcut --output Vercel_IA_firmado.shortcut
+          test -s Vercel_IA_sin_firmar.shortcut
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p = Path('Vercel_IA_sin_firmar.shortcut')
+          data = plistlib.loads(p.read_bytes())
+          assert isinstance(data.get('WFWorkflowActions'), list)
+          assert data['WFWorkflowActions'], 'Atajo sin acciones'
+          print(f"Atajo verificado: {len(data['WFWorkflowActions'])} acciones, {p.stat().st_size} bytes")
+          PY
+
+      - name: Firmar mediante Shortcuty (servicio externo)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --show-error --silent \
+            --retry 2 --retry-delay 5 --retry-all-errors \
+            --connect-timeout 15 --max-time 120 \
+            -F 'file=@Vercel_IA_sin_firmar.shortcut;type=application/octet-stream' \
+            'https://sign.shortcuty.app/api/v1/sign' \
+            -o Vercel_IA_firmado.shortcut
+
+      - name: Comprobar firma
+        shell: bash
+        run: |
+          set -euo pipefail
           test -s Vercel_IA_firmado.shortcut
-      - name: Publicar archivo firmado
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Vercel_IA_firmado.shortcut')
+          data = p.read_bytes()
+          if not data.startswith(b'AEA1'):
+              print('No se recibio un archivo AEA1 firmado. Respuesta inicial:', repr(data[:300]))
+              raise SystemExit(1)
+          print('Archivo firmado recibido: ', len(data), 'bytes')
+          PY
+          sha256sum Vercel_IA_firmado.shortcut
+
+      - name: Descargar atajo firmado
         uses: actions/upload-artifact@v4
         with:
           name: Vercel-IA-firmado
           path: Vercel_IA_firmado.shortcut
+          if-no-files-found: error
           retention-days: 7
