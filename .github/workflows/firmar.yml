@@ -36,12 +36,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail-with-body --show-error --silent \
-            --retry 2 --retry-delay 5 --retry-all-errors \
+          STATUS=$(curl --show-error --silent \
             --connect-timeout 15 --max-time 120 \
-            -F 'file=@Vercel_IA_sin_firmar.shortcut;type=application/octet-stream' \
+            -w '%{http_code}' \
+            -F 'file=@Vercel_IA_sin_firmar.shortcut' \
             'https://sign.shortcuty.app/api/v1/sign' \
-            -o Vercel_IA_firmado.shortcut
+            -o Vercel_IA_firmado.shortcut)
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Servicio de firma respondio HTTP $STATUS"
+            head -c 600 Vercel_IA_firmado.shortcut || true
+            echo ""
+            exit 1
+          fi
 
       - name: Comprobar firma
         shell: bash
